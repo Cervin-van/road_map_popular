@@ -99,3 +99,52 @@ def test_cache_failure_does_not_count_or_raise(caplog):
         assert services.register_view(location, make_request()) is False
     assert not LocationView.objects.exists()
     assert "view not counted" in caplog.text
+
+
+# --- detail endpoint registers views --------------------------------------
+
+
+def detail_url(location):
+    return f"/api/locations/{location.pk}/"
+
+
+def test_detail_counts_view_in_same_response(api_client):
+    location = LocationFactory()
+    response = api_client.get(detail_url(location))
+    assert response.status_code == 200
+    assert response.data["views_7d"] == 1
+
+
+def test_repeated_detail_requests_count_once_per_hour(api_client):
+    location = LocationFactory()
+    with freeze_time("2026-01-01 10:00") as frozen:
+        api_client.get(detail_url(location))
+        assert api_client.get(detail_url(location)).data["views_7d"] == 1
+        frozen.tick(timedelta(minutes=61))
+        assert api_client.get(detail_url(location)).data["views_7d"] == 2
+
+
+def test_different_anonymous_viewers_counted(api_client):
+    location = LocationFactory()
+    api_client.get(detail_url(location), REMOTE_ADDR="1.1.1.1")
+    response = api_client.get(detail_url(location), REMOTE_ADDR="2.2.2.2")
+    assert response.data["views_7d"] == 2
+
+
+def test_authenticated_view_stores_user(auth_client, user):
+    location = LocationFactory()
+    auth_client.get(detail_url(location))
+    assert LocationView.objects.get().user == user
+
+
+def test_list_does_not_register_views(api_client):
+    LocationFactory()
+    api_client.get("/api/locations/")
+    assert not LocationView.objects.exists()
+
+
+def test_soft_deleted_location_view_not_registered(api_client):
+    location = LocationFactory()
+    location.soft_delete()
+    assert api_client.get(detail_url(location)).status_code == 404
+    assert not LocationView.objects.exists()

@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
@@ -6,6 +7,7 @@ from rest_framework.response import Response
 from apps.common.permissions import IsOwnerOrAdmin
 
 from . import selectors, services
+from .models import Location
 from .serializers import (
     LocationDetailSerializer,
     LocationListSerializer,
@@ -30,6 +32,15 @@ class LocationViewSet(viewsets.ModelViewSet):
         if self.action in {"create", "update", "partial_update"}:
             return LocationWriteSerializer
         return LocationDetailSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        # Cheap lookup first: the stats query runs once, after the view is registered,
+        # so views_7d in this response already includes the current view.
+        # Never cached: it has a side effect and must show fresh numbers.
+        location = get_object_or_404(Location.objects, pk=kwargs["pk"])  # soft-deleted -> 404
+        self.check_object_permissions(request, location)
+        services.register_view(location, request)
+        return Response(self._detail(location.pk))
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
