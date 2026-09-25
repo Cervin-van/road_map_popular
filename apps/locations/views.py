@@ -21,7 +21,7 @@ _write_schema = extend_schema(request=LocationWriteSerializer, responses=Locatio
 class LocationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
     search_fields = ["title", "description"]  # ?search=, case-insensitive icontains
-    ordering_fields = ["created_at"]
+    ordering_fields = ["created_at", "avg_rating", "popularity"]  # annotations are orderable
     ordering = ["-created_at"]
 
     def get_queryset(self):
