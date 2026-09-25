@@ -1,6 +1,11 @@
 import pytest
 
-from tests.factories import LocationFactory, LocationViewFactory, ReviewFactory
+from tests.factories import (
+    CategoryFactory,
+    LocationFactory,
+    LocationViewFactory,
+    ReviewFactory,
+)
 
 pytestmark = pytest.mark.django_db
 
@@ -114,3 +119,64 @@ def test_unknown_ordering_field_falls_back_to_default(api_client):
     older, newer = LocationFactory(), LocationFactory()
     response = api_client.get(LIST_URL, {"ordering": "author__password"})
     assert ordered_ids(response) == [newer.id, older.id]
+
+
+# --- filters --------------------------------------------------------------
+
+
+def test_filter_by_category_id_and_slug(api_client):
+    park = LocationFactory(category=CategoryFactory(name="Парки"))
+    LocationFactory(category=CategoryFactory(name="Музеї"))
+
+    assert ids(api_client.get(LIST_URL, {"category": park.category_id})) == {park.id}
+    assert ids(api_client.get(LIST_URL, {"category_slug": "парки"})) == {park.id}
+
+
+def test_unknown_category_returns_400(api_client):
+    response = api_client.get(LIST_URL, {"category": 999_999})
+    assert response.status_code == 400
+    assert "category" in response.data
+
+
+def test_filter_by_author(api_client):
+    mine = LocationFactory()
+    LocationFactory()
+    assert ids(api_client.get(LIST_URL, {"author": mine.author_id})) == {mine.id}
+
+
+def test_filter_by_rating_range_excludes_unrated(api_client, rated):
+    top, low, _unrated = rated
+
+    assert ids(api_client.get(LIST_URL, {"min_rating": 4})) == {top.id}
+    assert ids(api_client.get(LIST_URL, {"max_rating": 3})) == {low.id}
+    assert ids(api_client.get(LIST_URL, {"min_rating": 2, "max_rating": 5})) == {top.id, low.id}
+
+
+def test_min_rating_boundary_is_inclusive(api_client):
+    location = LocationFactory()
+    ReviewFactory(location=location, rating=4)
+    ReviewFactory(location=location, rating=5)  # avg 4.5
+    assert ids(api_client.get(LIST_URL, {"min_rating": 4.5})) == {location.id}
+
+
+@pytest.mark.parametrize("params", [{"min_rating": 0}, {"max_rating": 6}, {"min_rating": "abc"}])
+def test_invalid_rating_filter_returns_400(api_client, params):
+    response = api_client.get(LIST_URL, params)
+    assert response.status_code == 400
+    assert set(params) <= set(response.data)
+
+
+def test_filters_combine_with_search_and_ordering(api_client):
+    category = CategoryFactory()
+    best = LocationFactory(category=category, title="Park A")
+    ReviewFactory(location=best, rating=5)
+    good = LocationFactory(category=category, title="Park B")
+    ReviewFactory(location=good, rating=4)
+    LocationFactory(title="Park C")  # another category
+
+    response = api_client.get(
+        LIST_URL,
+        {"category": category.id, "search": "park", "min_rating": 4, "ordering": "avg_rating"},
+    )
+
+    assert ordered_ids(response) == [good.id, best.id]

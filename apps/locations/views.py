@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from apps.common.permissions import IsOwnerOrAdmin
 
 from . import selectors, services
+from .filters import LocationFilter
 from .models import Location
 from .serializers import (
     LocationDetailSerializer,
@@ -20,6 +21,7 @@ _write_schema = extend_schema(request=LocationWriteSerializer, responses=Locatio
 @extend_schema_view(create=_write_schema, update=_write_schema, partial_update=_write_schema)
 class LocationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
+    filterset_class = LocationFilter
     search_fields = ["title", "description"]  # ?search=, case-insensitive icontains
     ordering_fields = ["created_at", "avg_rating", "popularity"]  # annotations are orderable
     ordering = ["-created_at"]
