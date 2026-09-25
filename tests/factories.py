@@ -1,0 +1,24 @@
+import factory
+from django.contrib.auth import get_user_model
+
+DEFAULT_PASSWORD = "S3cure-pass!"
+
+
+class UserFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = get_user_model()
+        skip_postgeneration_save = True
+
+    username = factory.Sequence(lambda n: f"user{n}")
+    email = factory.LazyAttribute(lambda o: f"{o.username}@example.com")
+    password = factory.PostGenerationMethodCall("set_password", DEFAULT_PASSWORD)
+
+    @factory.post_generation
+    def _save(obj, create, extracted, **kwargs):
+        if create:
+            obj.save()
+
+
+class AdminFactory(UserFactory):
+    is_staff = True
+    is_superuser = True
