@@ -147,6 +147,16 @@ curl -s "$API/locations/map/?bbox=30.4,50.4,30.6,50.5&limit=50"
 curl -s -OJ "$API/locations/export/?export_format=csv&category_slug=парки"
 ```
 
+### Скидання пароля (без фронтенду)
+
+Проєкт — лише бекенд, тож посилання `FRONTEND_URL/reset-password?uid=…&token=…` у листі призначене для майбутнього клієнта. Завершити скидання можна прямо через API:
+
+1. `POST /api/auth/password-reset/` з `{"email": "..."}` — відповідь завжди 200.
+2. Відкрити лист у Mailpit (http://localhost:8025): у ньому окремими рядками є `uid` і `token`.
+3. `POST /api/auth/password-reset/confirm/` з `{"uid": "...", "token": "...", "new_password": "...", "new_password2": "..."}` (через Swagger або curl з `X-CSRFToken`).
+
+Токен одноразовий і діє `PASSWORD_RESET_TIMEOUT` (3 дні); після зміни пароля всі старі сесії користувача стають недійсними.
+
 > **Windows (Git Bash / PowerShell):** консоль передає кирилицю в аргументах не в UTF-8, і API відповідає `400 JSON parse error`. Кладіть тіло запиту у файл у кодуванні UTF-8 і надсилайте `--data-binary @payload.json`, а кириличні query-параметри URL-кодуйте (`category_slug=%D0%BF%D0%B0%D1%80%D0%BA%D0%B8`). Swagger UI (`/api/docs/`) цієї проблеми не має.
 
 ---

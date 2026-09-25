@@ -139,3 +139,14 @@ def test_confirm_invalidates_existing_sessions(request_reset, auth_client, user)
 
     assert _confirm(APIClient(), uid, token).status_code == 200
     assert auth_client.get(ME_URL).status_code == 403
+
+
+def test_email_lists_uid_and_token_for_api_only_reset(request_reset, api_client, user):
+    request_reset(user.email)
+    body = mail.outbox[0].body
+    uid = re.search(r"^uid: ([\w-]+)$", body, re.MULTILINE).group(1)
+    token = re.search(r"^token: ([\w-]+)$", body, re.MULTILINE).group(1)
+
+    assert (uid, token) == _link_params(mail.outbox[0])
+    assert "/api/auth/password-reset/confirm/" in body
+    assert _confirm(api_client, uid, token).status_code == 200

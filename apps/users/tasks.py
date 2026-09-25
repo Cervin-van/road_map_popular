@@ -20,15 +20,19 @@ def send_password_reset_email(user_id: int) -> None:
     if user is None:
         return
 
-    query = urlencode(
-        {
-            "uid": urlsafe_base64_encode(force_bytes(user.pk)),
-            "token": default_token_generator.make_token(user),
-        }
-    )
+    params = {
+        "uid": urlsafe_base64_encode(force_bytes(user.pk)),
+        "token": default_token_generator.make_token(user),
+    }
     body = render_to_string(
         "emails/password_reset.txt",
-        {"user": user, "reset_url": f"{settings.FRONTEND_URL}/reset-password?{query}"},
+        {
+            "user": user,
+            **params,
+            # The backend has no pages: the link targets a client; uid/token are
+            # also listed so the reset can be finished via the API directly
+            "reset_url": f"{settings.FRONTEND_URL}/reset-password?{urlencode(params)}",
+        },
     )
     send_mail(
         subject="Password reset",
