@@ -1,8 +1,8 @@
-from django.shortcuts import get_object_or_404
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.generics import get_object_or_404
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
@@ -26,6 +26,7 @@ _write_schema = extend_schema(request=LocationWriteSerializer, responses=Locatio
 
 @extend_schema_view(create=_write_schema, update=_write_schema, partial_update=_write_schema)
 class LocationViewSet(viewsets.ModelViewSet):
+    lookup_value_regex = r"\d+"  # non-numeric ids -> 404 from the router
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
     filterset_class = LocationFilter
     search_fields = ["title", "description"]  # ?search=, case-insensitive icontains

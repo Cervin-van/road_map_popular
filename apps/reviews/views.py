@@ -65,6 +65,7 @@ class ReviewViewSet(
 ):
     """/reviews/{id}/"""
 
+    lookup_value_regex = r"\d+"  # non-numeric ids -> 404 from the router
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
     # No PUT; POST is only routed to the vote action (the router maps none on detail)
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]

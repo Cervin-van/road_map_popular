@@ -7,6 +7,7 @@ from .serializers import CategorySerializer
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
+    lookup_value_regex = r"\d+"  # non-numeric ids -> 404 from the router
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [IsAdminOrReadOnly]
