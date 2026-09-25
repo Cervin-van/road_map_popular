@@ -1,7 +1,7 @@
 DC = docker compose
 WEB = $(DC) exec web
 
-.PHONY: up down build logs migrate makemigrations superuser shell test lint check
+.PHONY: up down build logs migrate makemigrations superuser shell seed test lint check
 
 up:
 	$(DC) up --build
@@ -26,6 +26,9 @@ superuser:
 
 shell:
 	$(WEB) python manage.py shell
+
+seed:
+	$(WEB) python manage.py seed_demo
 
 test:
 	$(WEB) pytest
