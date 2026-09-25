@@ -73,7 +73,11 @@ class ReviewViewSet(
         return selectors.reviews_with_votes(self.request.user)
 
     def get_serializer_class(self):
-        return ReviewWriteSerializer if self.action == "partial_update" else ReviewSerializer
+        # Also drives the Browsable API form for each action
+        return {
+            "partial_update": ReviewWriteSerializer,
+            "vote": VoteSerializer,
+        }.get(self.action, ReviewSerializer)
 
     def update(self, request, *args, **kwargs):
         review = self.get_object()  # runs IsOwnerOrAdmin
@@ -90,6 +94,10 @@ class ReviewViewSet(
     # IsOwnerOrAdmin would make get_object() reject everyone but the review author
     @action(detail=True, methods=["post", "delete"], permission_classes=[IsAuthenticated])
     def vote(self, request, pk=None):
+        """Like or dislike a review: POST {"value": "like" | "dislike"}; DELETE cancels your vote.
+
+        One vote per user: a second POST returns 409 already_voted.
+        """
         review = self.get_object()  # soft-deleted location -> 404
 
         if request.method == "DELETE":
@@ -97,7 +105,7 @@ class ReviewViewSet(
                 raise NotFound("You have not voted for this review.")
             return Response(status=status.HTTP_204_NO_CONTENT)
 
-        serializer = VoteSerializer(data=request.data)
+        serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         services.vote_review(
             review=review, user=request.user, value=serializer.validated_data["value"]
