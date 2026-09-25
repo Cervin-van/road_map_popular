@@ -52,3 +52,62 @@ def test_admin_lists_soft_deleted_locations(admin_client):
     assert response.status_code == 200
     assert alive.title in response.content.decode()
     assert deleted.title in response.content.decode()
+
+
+# --- read API -------------------------------------------------------------
+
+LIST_URL = "/api/locations/"
+
+
+def detail_url(pk):
+    return f"{LIST_URL}{pk}/"
+
+
+def test_anonymous_can_list_locations(api_client):
+    location = LocationFactory(description="x" * 500)
+
+    response = api_client.get(LIST_URL)
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    item = response.data["results"][0]
+    assert item["category"] == {"id": location.category_id, "name": location.category.name}
+    assert item["author"] == {"id": location.author_id, "username": location.author.username}
+    assert len(item["short_description"]) == 200
+    assert "description" not in item
+
+
+def test_list_newest_first(api_client):
+    older = LocationFactory()
+    newer = LocationFactory()
+    ids = [item["id"] for item in api_client.get(LIST_URL).data["results"]]
+    assert ids == [newer.id, older.id]
+
+
+def test_list_has_no_n_plus_one(api_client, django_assert_num_queries):
+    LocationFactory.create_batch(5)  # each with its own category and author
+    with django_assert_num_queries(2):  # COUNT for pagination + one SELECT with JOINs
+        response = api_client.get(LIST_URL)
+    assert response.data["count"] == 5
+
+
+def test_retrieve_location(api_client):
+    location = LocationFactory()
+
+    response = api_client.get(detail_url(location.pk))
+
+    assert response.status_code == 200
+    assert response.data["description"] == location.description
+    assert response.data["latitude"] == "50.450100"
+    assert "updated_at" in response.data
+
+
+def test_soft_deleted_location_hidden_from_api(api_client):
+    alive = LocationFactory()
+    deleted = LocationFactory()
+    deleted.soft_delete()
+
+    ids = [item["id"] for item in api_client.get(LIST_URL).data["results"]]
+
+    assert ids == [alive.id]
+    assert api_client.get(detail_url(deleted.pk)).status_code == 404
