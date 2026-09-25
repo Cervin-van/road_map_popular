@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 from apps.categories.models import Category
 from apps.locations.models import Location, LocationView
+from apps.notifications.models import LocationSubscription
 from apps.reviews.models import Review, ReviewVote
 
 DEFAULT_PASSWORD = "S3cure-pass!"
@@ -76,3 +77,11 @@ class ReviewVoteFactory(factory.django.DjangoModelFactory):
     review = factory.SubFactory(ReviewFactory)
     user = factory.SubFactory(UserFactory)
     value = ReviewVote.Value.LIKE
+
+
+class LocationSubscriptionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = LocationSubscription
+
+    user = factory.SubFactory(UserFactory)
+    location = factory.SubFactory(LocationFactory)
