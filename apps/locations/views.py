@@ -6,6 +6,7 @@ from rest_framework.response import Response
 
 from apps.common.permissions import IsOwnerOrAdmin
 
+from . import cache as list_cache
 from . import selectors, services
 from .filters import LocationFilter
 from .models import Location
@@ -35,6 +36,16 @@ class LocationViewSet(viewsets.ModelViewSet):
         if self.action in {"create", "update", "partial_update"}:
             return LocationWriteSerializer
         return LocationDetailSerializer
+
+    def list(self, request, *args, **kwargs):
+        # Shared across users: the list payload must never depend on request.user
+        cached = list_cache.get("list", request.query_params)
+        if cached is not None:
+            return Response(cached)
+        response = super().list(request, *args, **kwargs)
+        if response.status_code == status.HTTP_200_OK:
+            list_cache.set("list", request.query_params, response.data)
+        return response
 
     def retrieve(self, request, *args, **kwargs):
         # Cheap lookup first: the stats query runs once, after the view is registered,
