@@ -71,3 +71,72 @@ def test_retrieve_category(api_client):
 
 def test_retrieve_missing_category_returns_404(api_client):
     assert api_client.get(detail_url(999_999)).status_code == 404
+
+
+# --- write API ------------------------------------------------------------
+
+
+def test_admin_creates_category(admin_client):
+    response = admin_client.post(
+        LIST_URL, {"name": "Музеї", "slug": "hacked", "description": "Опис"}, format="json"
+    )
+    assert response.status_code == 201
+    assert response.data["slug"] == "музеї"  # client-supplied slug is ignored
+    assert Category.objects.filter(slug="музеї").exists()
+
+
+def test_admin_renames_category(admin_client):
+    category = CategoryFactory(name="Парки")
+    response = admin_client.patch(detail_url(category.pk), {"name": "Сквери"}, format="json")
+    assert response.status_code == 200
+    assert response.data["slug"] == "сквери"
+
+
+def test_admin_updates_description_keeping_name(admin_client):
+    category = CategoryFactory(name="Парки")
+    response = admin_client.patch(
+        detail_url(category.pk), {"name": "Парки", "description": "Нове"}, format="json"
+    )
+    assert response.status_code == 200
+    assert response.data["description"] == "Нове"
+
+
+def test_admin_deletes_category(admin_client):
+    category = CategoryFactory()
+    assert admin_client.delete(detail_url(category.pk)).status_code == 204
+    assert not Category.objects.filter(pk=category.pk).exists()
+
+
+@pytest.mark.parametrize("name", ["МУЗЕЇ", "Музеї!"])
+def test_duplicate_name_rejected(admin_client, name):
+    CategoryFactory(name="Музеї")
+    response = admin_client.post(LIST_URL, {"name": name}, format="json")
+    assert response.status_code == 400
+    assert "name" in response.data
+
+
+def test_rename_to_existing_name_rejected(admin_client):
+    CategoryFactory(name="Музеї")
+    category = CategoryFactory(name="Парки")
+    response = admin_client.patch(detail_url(category.pk), {"name": "музеї"}, format="json")
+    assert response.status_code == 400
+
+
+def test_name_without_letters_rejected(admin_client):
+    response = admin_client.post(LIST_URL, {"name": "!!!"}, format="json")
+    assert response.status_code == 400
+    assert "name" in response.data
+
+
+def test_regular_user_cannot_write(auth_client):
+    category = CategoryFactory()
+    assert auth_client.post(LIST_URL, {"name": "Нова"}, format="json").status_code == 403
+    assert (
+        auth_client.patch(detail_url(category.pk), {"name": "X"}, format="json").status_code == 403
+    )
+    assert auth_client.delete(detail_url(category.pk)).status_code == 403
+    assert Category.objects.filter(pk=category.pk).exists()
+
+
+def test_anonymous_cannot_write(api_client):
+    assert api_client.post(LIST_URL, {"name": "Нова"}, format="json").status_code == 403
