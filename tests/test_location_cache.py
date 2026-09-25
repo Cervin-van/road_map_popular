@@ -5,7 +5,8 @@ from django.core.cache import cache
 from django.http import QueryDict
 
 from apps.locations import cache as list_cache
-from tests.factories import LocationFactory
+from apps.reviews import services as review_services
+from tests.factories import LocationFactory, ReviewFactory
 
 
 def qd(query: str) -> QueryDict:
@@ -102,3 +103,112 @@ def test_detail_is_not_cached(api_client):
     api_client.get(f"{LIST_URL}{location.pk}/")
     assert api_client.get(f"{LIST_URL}{location.pk}/").data["title"] == location.title
     assert not list_cache.get("list", qd(""))
+
+
+# --- invalidation ---------------------------------------------------------
+
+
+def list_titles(client):
+    return [item["title"] for item in client.get(LIST_URL).data["results"]]
+
+
+@pytest.fixture
+def committed(django_capture_on_commit_callbacks):
+    """Run on_commit callbacks, as a real request's transaction commit would."""
+
+    def run(action):
+        with django_capture_on_commit_callbacks(execute=True):
+            return action()
+
+    return run
+
+
+@pytest.mark.django_db
+def test_location_create_update_and_soft_delete_invalidate(auth_client, user, committed):
+    category_id = LocationFactory(author=user).category_id
+    assert len(list_titles(auth_client)) == 1  # warm the cache
+
+    payload = {
+        "title": "New",
+        "description": "d",
+        "category": category_id,
+        "address": "a",
+        "latitude": "50.1",
+        "longitude": "30.1",
+    }
+    new_id = committed(lambda: auth_client.post(LIST_URL, payload, format="json")).data["id"]
+    assert "New" in list_titles(auth_client)
+
+    committed(
+        lambda: auth_client.patch(f"{LIST_URL}{new_id}/", {"title": "Renamed"}, format="json")
+    )
+    assert "Renamed" in list_titles(auth_client)
+
+    committed(lambda: auth_client.delete(f"{LIST_URL}{new_id}/"))
+    assert "Renamed" not in list_titles(auth_client)
+
+
+@pytest.mark.django_db
+def test_new_review_updates_cached_stats(api_client, auth_client, committed):
+    location = LocationFactory()
+    assert api_client.get(LIST_URL).data["results"][0]["reviews_count"] == 0
+
+    committed(
+        lambda: auth_client.post(
+            f"/api/locations/{location.pk}/reviews/", {"rating": 5, "text": "x"}, format="json"
+        )
+    )
+
+    item = api_client.get(LIST_URL).data["results"][0]
+    assert (item["reviews_count"], item["avg_rating"]) == (1, 5.0)
+
+
+@pytest.mark.django_db
+def test_review_update_and_delete_invalidate(api_client, committed):
+    review = ReviewFactory(rating=2)
+    api_client.get(LIST_URL)
+
+    committed(lambda: review_services.update_review(review, rating=4))
+    assert api_client.get(LIST_URL).data["results"][0]["avg_rating"] == 4.0
+
+    committed(review.delete)
+    assert api_client.get(LIST_URL).data["results"][0]["reviews_count"] == 0
+
+
+@pytest.mark.django_db
+def test_category_rename_invalidates(api_client, committed):
+    location = LocationFactory()
+    api_client.get(LIST_URL)
+    category = location.category
+    category.name = "Renamed category"
+
+    committed(category.save)
+
+    assert api_client.get(LIST_URL).data["results"][0]["category"]["name"] == "Renamed category"
+
+
+@pytest.mark.django_db
+def test_invalidation_waits_for_commit(api_client, django_capture_on_commit_callbacks):
+    api_client.get(LIST_URL)
+    with django_capture_on_commit_callbacks(execute=False) as callbacks:
+        LocationFactory()
+    assert api_client.get(LIST_URL).data["count"] == 0  # not committed yet: still cached
+    assert callbacks
+
+
+@pytest.mark.django_db
+def test_views_and_votes_do_not_invalidate(
+    api_client, auth_client, committed, django_assert_num_queries
+):
+    review = ReviewFactory()
+    api_client.get(LIST_URL)
+
+    committed(lambda: api_client.get(f"{LIST_URL}{review.location_id}/"))  # registers a view
+    committed(
+        lambda: auth_client.post(
+            f"/api/reviews/{review.pk}/vote/", {"value": "like"}, format="json"
+        )
+    )
+
+    with django_assert_num_queries(0):
+        api_client.get(LIST_URL)
