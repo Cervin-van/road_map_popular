@@ -1,5 +1,6 @@
 from django.db import IntegrityError, transaction
 
+from apps.common.db import violates_constraint
 from apps.common.exceptions import Conflict
 
 from .models import Review, ReviewVote
@@ -7,12 +8,6 @@ from .models import Review, ReviewVote
 REVIEW_UNIQUE = "uniq_review_per_user_location"
 VOTE_UNIQUE = "uniq_vote_per_user_review"
 UPDATABLE_FIELDS = frozenset({"rating", "text"})
-
-
-def _violates(exc: IntegrityError, constraint: str) -> bool:
-    # psycopg exposes the violated constraint name; stabler than parsing the message
-    diag = getattr(exc.__cause__, "diag", None)
-    return getattr(diag, "constraint_name", None) == constraint
 
 
 def create_review(*, location, author, rating: int, text: str) -> Review:
@@ -24,7 +19,7 @@ def create_review(*, location, author, rating: int, text: str) -> Review:
         with transaction.atomic():
             return Review.objects.create(location=location, author=author, rating=rating, text=text)
     except IntegrityError as exc:
-        if _violates(exc, REVIEW_UNIQUE):  # lost a race with a concurrent request
+        if violates_constraint(exc, REVIEW_UNIQUE):  # lost a race with a concurrent request
             raise duplicate from exc
         raise
 
@@ -54,7 +49,7 @@ def vote_review(*, review: Review, user, value: int) -> ReviewVote:
         with transaction.atomic():
             return ReviewVote.objects.create(review=review, user=user, value=value)
     except IntegrityError as exc:
-        if _violates(exc, VOTE_UNIQUE):
+        if violates_constraint(exc, VOTE_UNIQUE):
             raise duplicate from exc
         raise
 
