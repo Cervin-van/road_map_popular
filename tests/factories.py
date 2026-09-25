@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 from apps.categories.models import Category
 from apps.locations.models import Location
+from apps.reviews.models import Review, ReviewVote
 
 DEFAULT_PASSWORD = "S3cure-pass!"
 
@@ -47,3 +48,22 @@ class LocationFactory(factory.django.DjangoModelFactory):
     latitude = Decimal("50.450100")  # Kyiv
     longitude = Decimal("30.523400")
     author = factory.SubFactory(UserFactory)
+
+
+class ReviewFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Review
+
+    location = factory.SubFactory(LocationFactory)
+    author = factory.SubFactory(UserFactory)
+    rating = 4
+    text = factory.Faker("sentence")
+
+
+class ReviewVoteFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = ReviewVote
+
+    review = factory.SubFactory(ReviewFactory)
+    user = factory.SubFactory(UserFactory)
+    value = ReviewVote.Value.LIKE
