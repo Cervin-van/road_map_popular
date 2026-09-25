@@ -3,7 +3,9 @@ from functools import cached_property
 from django.shortcuts import get_object_or_404
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import mixins, status, viewsets
-from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
 from apps.common.permissions import IsOwnerOrAdmin
@@ -11,7 +13,7 @@ from apps.locations.models import Location
 
 from . import selectors, services
 from .models import Review
-from .serializers import ReviewSerializer, ReviewWriteSerializer
+from .serializers import ReviewSerializer, ReviewWriteSerializer, VoteSerializer
 
 _write_schema = extend_schema(request=ReviewWriteSerializer, responses=ReviewSerializer)
 
@@ -64,7 +66,8 @@ class ReviewViewSet(
     """/reviews/{id}/"""
 
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
-    http_method_names = ["get", "patch", "delete", "head", "options"]  # no PUT
+    # No PUT; POST is only routed to the vote action (the router maps none on detail)
+    http_method_names = ["get", "post", "patch", "delete", "head", "options"]
 
     def get_queryset(self):
         return selectors.reviews_with_votes(self.request.user)
@@ -81,3 +84,22 @@ class ReviewViewSet(
 
     def perform_destroy(self, instance):
         services.delete_review(instance)
+
+    @extend_schema(methods=["POST"], request=VoteSerializer, responses={201: ReviewSerializer})
+    @extend_schema(methods=["DELETE"], request=None, responses={204: None})
+    # IsOwnerOrAdmin would make get_object() reject everyone but the review author
+    @action(detail=True, methods=["post", "delete"], permission_classes=[IsAuthenticated])
+    def vote(self, request, pk=None):
+        review = self.get_object()  # soft-deleted location -> 404
+
+        if request.method == "DELETE":
+            if not services.remove_vote(review=review, user=request.user):
+                raise NotFound("You have not voted for this review.")
+            return Response(status=status.HTTP_204_NO_CONTENT)
+
+        serializer = VoteSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.vote_review(
+            review=review, user=request.user, value=serializer.validated_data["value"]
+        )
+        return Response(self._read(review.pk), status=status.HTTP_201_CREATED)

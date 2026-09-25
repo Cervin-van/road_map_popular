@@ -5,6 +5,7 @@ from apps.locations.serializers import AuthorShortSerializer
 from .models import Review, ReviewVote
 
 VOTE_LABELS = {value: label for value, label in ReviewVote.Value.choices}
+VOTE_VALUES = {label: value for value, label in VOTE_LABELS.items()}
 
 
 class ReviewSerializer(serializers.ModelSerializer):
@@ -39,3 +40,11 @@ class ReviewWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Review
         fields = ["rating", "text"]
+
+
+class VoteSerializer(serializers.Serializer):
+    value = serializers.ChoiceField(choices=list(VOTE_VALUES))
+
+    def validate_value(self, label) -> int:
+        # API speaks "like"/"dislike"; services and DB use +1/-1
+        return VOTE_VALUES[label]

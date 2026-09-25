@@ -193,3 +193,75 @@ def test_put_not_allowed(auth_client, user):
     review = ReviewFactory(author=user)
     response = auth_client.put(review_url(review.pk), REVIEW_PAYLOAD, format="json")
     assert response.status_code == 405
+
+
+# --- votes API ------------------------------------------------------------
+
+
+def vote_url(review_id):
+    return f"/api/reviews/{review_id}/vote/"
+
+
+@pytest.mark.parametrize("value, counters", [("like", (1, 0)), ("dislike", (0, 1))])
+def test_vote_updates_counters(auth_client, value, counters):
+    review = ReviewFactory()  # someone else's review
+
+    response = auth_client.post(vote_url(review.pk), {"value": value}, format="json")
+
+    assert response.status_code == 201
+    assert (response.data["likes_count"], response.data["dislikes_count"]) == counters
+    assert response.data["my_vote"] == value
+
+
+def test_second_vote_returns_409(auth_client, user):
+    review = ReviewVoteFactory(user=user, value=1).review
+    response = auth_client.post(vote_url(review.pk), {"value": "dislike"}, format="json")
+    assert response.status_code == 409
+    assert response.data["code"] == "already_voted"
+
+
+def test_cancel_vote_then_vote_again(auth_client, user):
+    review = ReviewVoteFactory(user=user, value=1).review
+
+    assert auth_client.delete(vote_url(review.pk)).status_code == 204
+    assert auth_client.get(review_url(review.pk)).data["likes_count"] == 0
+
+    response = auth_client.post(vote_url(review.pk), {"value": "dislike"}, format="json")
+    assert response.status_code == 201
+    assert response.data["dislikes_count"] == 1
+
+
+def test_cancel_missing_vote_returns_404(auth_client):
+    review = ReviewFactory()
+    assert auth_client.delete(vote_url(review.pk)).status_code == 404
+
+
+def test_anonymous_cannot_vote(api_client):
+    review = ReviewFactory()
+    assert api_client.post(vote_url(review.pk), {"value": "like"}, format="json").status_code == 403
+
+
+@pytest.mark.parametrize("payload", [{"value": "love"}, {"value": 1}, {}])
+def test_invalid_vote_value_returns_400(auth_client, payload):
+    review = ReviewFactory()
+    response = auth_client.post(vote_url(review.pk), payload, format="json")
+    assert response.status_code == 400
+    assert "value" in response.data
+
+
+def test_author_can_vote_for_own_review(auth_client, user):
+    review = ReviewFactory(author=user)
+    response = auth_client.post(vote_url(review.pk), {"value": "like"}, format="json")
+    assert response.status_code == 201
+
+
+def test_vote_on_review_of_soft_deleted_location_returns_404(auth_client):
+    review = ReviewFactory()
+    review.location.soft_delete()
+    response = auth_client.post(vote_url(review.pk), {"value": "like"}, format="json")
+    assert response.status_code == 404
+
+
+def test_post_on_review_detail_not_allowed(auth_client, user):
+    review = ReviewFactory(author=user)
+    assert auth_client.post(review_url(review.pk), REVIEW_PAYLOAD, format="json").status_code == 405
