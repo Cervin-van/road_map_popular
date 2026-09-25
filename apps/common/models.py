@@ -24,7 +24,9 @@ class SoftDeleteManager(models.Manager.from_queryset(SoftDeleteQuerySet)):
 
 
 class SoftDeleteModel(models.Model):
-    is_deleted = models.BooleanField(default=False, db_index=True)
+    # No single-column index: a boolean with two values is not selective; concrete
+    # models add composite indexes that start with is_deleted instead.
+    is_deleted = models.BooleanField(default=False)
     deleted_at = models.DateTimeField(null=True, blank=True)
 
     objects = SoftDeleteManager()  # alive only; used by the API
