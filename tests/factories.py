@@ -1,7 +1,10 @@
+from decimal import Decimal
+
 import factory
 from django.contrib.auth import get_user_model
 
 from apps.categories.models import Category
+from apps.locations.models import Location
 
 DEFAULT_PASSWORD = "S3cure-pass!"
 
@@ -31,3 +34,16 @@ class CategoryFactory(factory.django.DjangoModelFactory):
         model = Category
 
     name = factory.Sequence(lambda n: f"Category {n}")
+
+
+class LocationFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Location
+
+    title = factory.Sequence(lambda n: f"Location {n}")
+    description = factory.Faker("paragraph")
+    category = factory.SubFactory(CategoryFactory)
+    address = factory.Faker("street_address")
+    latitude = Decimal("50.450100")  # Kyiv
+    longitude = Decimal("30.523400")
+    author = factory.SubFactory(UserFactory)
