@@ -22,7 +22,7 @@ class LocationViewSet(viewsets.ModelViewSet):
     ordering = ["-created_at"]
 
     def get_queryset(self):
-        return selectors.alive_locations()
+        return selectors.locations_with_stats()
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -51,6 +51,6 @@ class LocationViewSet(viewsets.ModelViewSet):
 
     def _detail(self, pk):
         # Re-read through the selector so the response carries the same
-        # annotations as GET (stats are added there in stage 5)
-        location = selectors.alive_locations().get(pk=pk)
+        # stats annotations as GET
+        location = selectors.locations_with_stats().get(pk=pk)
         return LocationDetailSerializer(location, context=self.get_serializer_context()).data

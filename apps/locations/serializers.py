@@ -23,10 +23,32 @@ class AuthorShortSerializer(serializers.ModelSerializer):
         fields = ["id", "username"]
 
 
-class LocationListSerializer(serializers.ModelSerializer):
-    # Nested data comes from select_related in selectors.alive_locations(): no N+1
+class RoundedFloatField(serializers.FloatField):
+    """Read-only float rounded for output; None (no reviews) stays null."""
+
+    def __init__(self, digits: int = 2, **kwargs):
+        self.digits = digits
+        super().__init__(read_only=True, **kwargs)
+
+    def to_representation(self, value):
+        return round(float(value), self.digits)
+
+
+class LocationBaseSerializer(serializers.ModelSerializer):
+    # Nested objects come from select_related and stats from annotations in
+    # selectors.locations_with_stats(): serializing makes no extra queries
     category = CategoryShortSerializer(read_only=True)
     author = AuthorShortSerializer(read_only=True)
+    avg_rating = RoundedFloatField(allow_null=True)
+    reviews_count = serializers.IntegerField(read_only=True)
+    views_7d = serializers.IntegerField(read_only=True)
+    popularity = RoundedFloatField()
+
+
+STATS_FIELDS = ["avg_rating", "reviews_count", "views_7d", "popularity"]
+
+
+class LocationListSerializer(LocationBaseSerializer):
     short_description = serializers.SerializerMethodField()
 
     class Meta:
@@ -40,6 +62,7 @@ class LocationListSerializer(serializers.ModelSerializer):
             "address",
             "latitude",
             "longitude",
+            *STATS_FIELDS,
             "created_at",
         ]
 
@@ -47,10 +70,7 @@ class LocationListSerializer(serializers.ModelSerializer):
         return Truncator(obj.description).chars(SHORT_DESCRIPTION_LENGTH)
 
 
-class LocationDetailSerializer(serializers.ModelSerializer):
-    category = CategoryShortSerializer(read_only=True)
-    author = AuthorShortSerializer(read_only=True)
-
+class LocationDetailSerializer(LocationBaseSerializer):
     class Meta:
         model = Location
         fields = [
@@ -62,6 +82,7 @@ class LocationDetailSerializer(serializers.ModelSerializer):
             "address",
             "latitude",
             "longitude",
+            *STATS_FIELDS,
             "created_at",
             "updated_at",
         ]
