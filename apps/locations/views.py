@@ -20,6 +20,7 @@ _write_schema = extend_schema(request=LocationWriteSerializer, responses=Locatio
 @extend_schema_view(create=_write_schema, update=_write_schema, partial_update=_write_schema)
 class LocationViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
+    search_fields = ["title", "description"]  # ?search=, case-insensitive icontains
     ordering_fields = ["created_at"]
     ordering = ["-created_at"]
 
