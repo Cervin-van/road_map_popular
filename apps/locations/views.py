@@ -1,6 +1,8 @@
 from django.shortcuts import get_object_or_404
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import extend_schema, extend_schema_view
 from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import IsAuthenticatedOrReadOnly
 from rest_framework.response import Response
 
@@ -13,7 +15,9 @@ from .models import Location
 from .serializers import (
     LocationDetailSerializer,
     LocationListSerializer,
+    LocationMapSerializer,
     LocationWriteSerializer,
+    MapQuerySerializer,
 )
 
 _write_schema = extend_schema(request=LocationWriteSerializer, responses=LocationDetailSerializer)
@@ -46,6 +50,38 @@ class LocationViewSet(viewsets.ModelViewSet):
         if response.status_code == status.HTTP_200_OK:
             list_cache.set("list", request.query_params, response.data)
         return response
+
+    @extend_schema(
+        parameters=[MapQuerySerializer],
+        responses={200: OpenApiTypes.OBJECT},
+        description="GeoJSON FeatureCollection of the most popular locations. "
+        "Accepts the same filters, search and ordering as the list (default -popularity).",
+    )
+    @action(detail=False, methods=["get"], pagination_class=None)
+    def map(self, request):
+        cached = list_cache.get("map", request.query_params)
+        if cached is not None:
+            return Response(cached)
+
+        params = MapQuerySerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        self.ordering = ["-popularity"]  # default for the map; ?ordering= still wins
+        queryset = self.filter_queryset(self.get_queryset())
+        if bbox := params.validated_data.get("bbox"):
+            min_lng, min_lat, max_lng, max_lat = bbox
+            queryset = queryset.filter(
+                longitude__gte=min_lng,
+                longitude__lte=max_lng,
+                latitude__gte=min_lat,
+                latitude__lte=max_lat,
+            )
+        locations = queryset[: params.validated_data["limit"]]
+        data = {
+            "type": "FeatureCollection",
+            "features": LocationMapSerializer(locations, many=True).data,
+        }
+        list_cache.set("map", request.query_params, data)
+        return Response(data)
 
     def retrieve(self, request, *args, **kwargs):
         # Cheap lookup first: the stats query runs once, after the view is registered,

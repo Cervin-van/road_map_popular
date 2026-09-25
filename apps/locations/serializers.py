@@ -120,3 +120,50 @@ class LocationWriteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Location
         fields = ["title", "description", "category", "address", "latitude", "longitude"]
+
+
+MAP_LIMIT_DEFAULT, MAP_LIMIT_MAX = 100, 500
+
+
+class MapQuerySerializer(serializers.Serializer):
+    """Map-specific query params; filters/search/ordering are shared with the list."""
+
+    bbox = serializers.CharField(
+        required=False, help_text="min_lng,min_lat,max_lng,max_lat (WGS84 degrees)"
+    )
+    limit = serializers.IntegerField(
+        required=False, default=MAP_LIMIT_DEFAULT, min_value=1, max_value=MAP_LIMIT_MAX
+    )
+
+    def validate_bbox(self, value):
+        try:
+            min_lng, min_lat, max_lng, max_lat = (Decimal(part) for part in value.split(","))
+        except (ValueError, InvalidOperation) as exc:
+            raise serializers.ValidationError(
+                "Expected four numbers: min_lng,min_lat,max_lng,max_lat."
+            ) from exc
+        if not (-180 <= min_lng <= max_lng <= 180 and -90 <= min_lat <= max_lat <= 90):
+            # A box crossing the antimeridian (min_lng > max_lng) is not supported
+            raise serializers.ValidationError("Coordinates out of range or min > max.")
+        return min_lng, min_lat, max_lng, max_lat
+
+
+class LocationMapSerializer(serializers.BaseSerializer):
+    """One GeoJSON Feature per location (RFC 7946: coordinates are [lng, lat])."""
+
+    def to_representation(self, obj):
+        return {
+            "type": "Feature",
+            "id": obj.id,
+            "geometry": {
+                "type": "Point",
+                "coordinates": [float(obj.longitude), float(obj.latitude)],
+            },
+            "properties": {
+                "id": obj.id,
+                "title": obj.title,
+                "category": obj.category.name,
+                "avg_rating": None if obj.avg_rating is None else round(obj.avg_rating, 2),
+                "popularity": round(obj.popularity, 2),
+            },
+        }
