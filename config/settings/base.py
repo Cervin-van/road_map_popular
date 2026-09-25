@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     "django_filters",
     "drf_spectacular",
     "apps.common",
+    "apps.users",
 ]
 
 MIDDLEWARE = [

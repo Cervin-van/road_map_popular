@@ -17,6 +17,13 @@ class IsOwnerOrAdmin(BasePermission):
         )
 
 
+class IsAnonymous(BasePermission):
+    message = "Already authenticated."
+
+    def has_permission(self, request, view):
+        return not (request.user and request.user.is_authenticated)
+
+
 class IsAdminOrReadOnly(BasePermission):
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
