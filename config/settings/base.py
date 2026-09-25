@@ -133,6 +133,9 @@ POPULARITY_WEIGHT_REVIEWS = env.float("POPULARITY_WEIGHT_REVIEWS", default=20.0)
 POPULARITY_WEIGHT_VIEWS = env.float("POPULARITY_WEIGHT_VIEWS", default=10.0)
 POPULARITY_VIEWS_WINDOW_DAYS = env.int("POPULARITY_VIEWS_WINDOW_DAYS", default=7)
 
+# Shared cache of the location list/map; invalidated on data changes
+LOCATIONS_LIST_CACHE_TTL = env.int("LOCATIONS_LIST_CACHE_TTL", default=300)
+
 # A viewer is counted at most once per this period per location
 LOCATION_VIEW_DEDUP_SECONDS = env.int("LOCATION_VIEW_DEDUP_SECONDS", default=60 * 60)
 
