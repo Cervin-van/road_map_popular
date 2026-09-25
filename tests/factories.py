@@ -1,6 +1,8 @@
 import factory
 from django.contrib.auth import get_user_model
 
+from apps.categories.models import Category
+
 DEFAULT_PASSWORD = "S3cure-pass!"
 
 
@@ -22,3 +24,10 @@ class UserFactory(factory.django.DjangoModelFactory):
 class AdminFactory(UserFactory):
     is_staff = True
     is_superuser = True
+
+
+class CategoryFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Category
+
+    name = factory.Sequence(lambda n: f"Category {n}")
