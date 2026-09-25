@@ -4,7 +4,7 @@ import factory
 from django.contrib.auth import get_user_model
 
 from apps.categories.models import Category
-from apps.locations.models import Location
+from apps.locations.models import Location, LocationView
 from apps.reviews.models import Review, ReviewVote
 
 DEFAULT_PASSWORD = "S3cure-pass!"
@@ -48,6 +48,15 @@ class LocationFactory(factory.django.DjangoModelFactory):
     latitude = Decimal("50.450100")  # Kyiv
     longitude = Decimal("30.523400")
     author = factory.SubFactory(UserFactory)
+
+
+class LocationViewFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = LocationView
+
+    location = factory.SubFactory(LocationFactory)
+    user = None
+    viewer_key = factory.Sequence(lambda n: f"anon:{n:064x}")
 
 
 class ReviewFactory(factory.django.DjangoModelFactory):

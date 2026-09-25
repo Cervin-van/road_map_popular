@@ -51,3 +51,30 @@ class Location(TimeStampedModel, SoftDeleteModel):
 
     def __str__(self):
         return self.title
+
+
+class LocationView(models.Model):
+    """One counted view (deduplicated to once per hour per viewer in services).
+
+    Raw events rather than a counter: popularity needs "views in the last N days".
+    """
+
+    location = models.ForeignKey(Location, on_delete=models.CASCADE, related_name="views")
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="location_views",
+    )
+    # "user:<id>" or "anon:<sha256(ip|ua)>" (69 chars), see apps.common.utils.viewer_key
+    viewer_key = models.CharField(max_length=80)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=["location", "created_at"], name="locview_location_created_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.viewer_key} → location #{self.location_id}"
