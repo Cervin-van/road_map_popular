@@ -112,7 +112,7 @@ def test_detail_counts_view_in_same_response(api_client):
     location = LocationFactory()
     response = api_client.get(detail_url(location))
     assert response.status_code == 200
-    assert response.data["views_7d"] == 1
+    assert (response.data["views_count"], response.data["views_7d"]) == (1, 1)
 
 
 def test_repeated_detail_requests_count_once_per_hour(api_client):

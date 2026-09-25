@@ -43,13 +43,9 @@ def locations_with_stats(qs: QuerySet[Location] | None = None) -> QuerySet[Locat
     reviews = Review.objects.filter(location=OuterRef("pk")).order_by().values("location")
     avg_sq = reviews.annotate(v=Avg("rating")).values("v")
     count_sq = reviews.annotate(v=Count("id")).values("v")
-    views_sq = (
-        LocationView.objects.filter(location=OuterRef("pk"), created_at__gte=since)
-        .order_by()
-        .values("location")
-        .annotate(v=Count("id"))
-        .values("v")
-    )
+    views = LocationView.objects.filter(location=OuterRef("pk")).order_by().values("location")
+    views_total_sq = views.annotate(v=Count("id")).values("v")
+    views_recent_sq = views.filter(created_at__gte=since).annotate(v=Count("id")).values("v")
 
     reviews_count = Cast("reviews_count", FloatField())
     return (
@@ -57,7 +53,8 @@ def locations_with_stats(qs: QuerySet[Location] | None = None) -> QuerySet[Locat
         .annotate(
             avg_rating=Cast(Subquery(avg_sq), FloatField()),  # NULL when there are no reviews
             reviews_count=Coalesce(Subquery(count_sq, output_field=IntegerField()), 0),
-            views_7d=Coalesce(Subquery(views_sq, output_field=IntegerField()), 0),
+            views_count=Coalesce(Subquery(views_total_sq, output_field=IntegerField()), 0),
+            views_7d=Coalesce(Subquery(views_recent_sq, output_field=IntegerField()), 0),
         )
         .annotate(
             bayes_rating=(Value(c * m) + Coalesce(F("avg_rating"), Value(0.0)) * reviews_count)

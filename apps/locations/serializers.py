@@ -41,11 +41,12 @@ class LocationBaseSerializer(serializers.ModelSerializer):
     author = AuthorShortSerializer(read_only=True)
     avg_rating = RoundedFloatField(allow_null=True)
     reviews_count = serializers.IntegerField(read_only=True)
-    views_7d = serializers.IntegerField(read_only=True)
+    views_count = serializers.IntegerField(read_only=True)  # all counted views
+    views_7d = serializers.IntegerField(read_only=True)  # the part used by popularity
     popularity = RoundedFloatField()
 
 
-STATS_FIELDS = ["avg_rating", "reviews_count", "views_7d", "popularity"]
+STATS_FIELDS = ["avg_rating", "reviews_count", "views_count", "views_7d", "popularity"]
 
 
 class LocationListSerializer(LocationBaseSerializer):

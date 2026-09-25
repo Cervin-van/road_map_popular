@@ -28,7 +28,7 @@ def test_location_without_reviews_or_views():
     location = stats(LocationFactory())
 
     assert location.avg_rating is None  # "no ratings", not a zero rating
-    assert (location.reviews_count, location.views_7d) == (0, 0)
+    assert (location.reviews_count, location.views_count, location.views_7d) == (0, 0, 0)
     assert location.bayes_rating == pytest.approx(3.0)  # the prior mean
     assert location.popularity == pytest.approx(expected_popularity(None, 0, 0))
 
@@ -65,7 +65,9 @@ def test_views_outside_window_are_ignored():
             LocationViewFactory(location=location)
 
     with freeze_time(now):
-        assert stats(location).views_7d == 2
+        location = stats(location)
+        assert location.views_7d == 2
+        assert location.views_count == 4  # the total keeps older views
 
 
 def test_popularity_matches_formula():

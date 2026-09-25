@@ -21,6 +21,7 @@ HEADER = [
     "longitude",
     "avg_rating",
     "reviews_count",
+    "views_count",
     "views_7d",
     "popularity",
     "created_at",

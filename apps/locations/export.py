@@ -17,6 +17,7 @@ COLUMNS = {
     "longitude": "longitude",
     "avg_rating": "avg_rating",
     "reviews_count": "reviews_count",
+    "views_count": "views_count",
     "views_7d": "views_7d",
     "popularity": "popularity",
     "created_at": "created_at",
