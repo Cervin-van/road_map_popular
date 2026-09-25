@@ -2,6 +2,7 @@ from django.db import IntegrityError, transaction
 
 from apps.common.db import violates_constraint
 from apps.common.exceptions import Conflict
+from apps.notifications.tasks import send_new_review_emails
 
 from .models import Review, ReviewVote
 
@@ -17,11 +18,17 @@ def create_review(*, location, author, rating: int, text: str) -> Review:
     try:
         # Savepoint: a failed INSERT must not break an enclosing transaction
         with transaction.atomic():
-            return Review.objects.create(location=location, author=author, rating=rating, text=text)
+            review = Review.objects.create(
+                location=location, author=author, rating=rating, text=text
+            )
     except IntegrityError as exc:
         if violates_constraint(exc, REVIEW_UNIQUE):  # lost a race with a concurrent request
             raise duplicate from exc
         raise
+
+    # After commit: the worker must see the review, and a rollback must not send emails
+    transaction.on_commit(lambda: send_new_review_emails.delay(review.pk))
+    return review
 
 
 def update_review(review: Review, **fields) -> Review:

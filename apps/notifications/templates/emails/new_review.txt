@@ -1,0 +1,10 @@
+Hello, {{ recipient.username }}!
+
+{{ review.author.username }} left a new review for "{{ location.title }}":
+
+Rating: {{ review.rating }}/5
+{{ review.text|safe }}
+
+Open the location: {{ location_url|safe }}
+
+You receive this email because you created or subscribed to this location.
