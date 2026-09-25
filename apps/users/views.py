@@ -12,7 +12,15 @@ from apps.common.mixins import EnforceCsrfMixin
 from apps.common.permissions import IsAnonymous
 
 from . import services
-from .serializers import LoginSerializer, RegisterSerializer, UserSerializer
+from .serializers import (
+    LoginSerializer,
+    PasswordResetConfirmSerializer,
+    PasswordResetSerializer,
+    RegisterSerializer,
+    UserSerializer,
+)
+
+DetailSerializer = inline_serializer("Detail", {"detail": serializers.CharField()})
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")
@@ -69,3 +77,29 @@ class MeView(GenericAPIView):
 
     def get(self, request):
         return Response(self.get_serializer(request.user).data)
+
+
+class PasswordResetView(EnforceCsrfMixin, GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetSerializer
+
+    @extend_schema(responses={200: DetailSerializer})
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        services.request_password_reset(serializer.validated_data["email"])
+        # Always 200: the response must not reveal whether the email is registered
+        return Response({"detail": "If the email is registered, a reset link has been sent."})
+
+
+class PasswordResetConfirmView(EnforceCsrfMixin, GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
+
+    @extend_schema(responses={200: DetailSerializer})
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        services.reset_password(user=data["user"], new_password=data["new_password"])
+        return Response({"detail": "Password has been reset."})
