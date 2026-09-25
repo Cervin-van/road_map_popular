@@ -9,10 +9,11 @@ from rest_framework.response import Response
 from apps.common.permissions import IsOwnerOrAdmin
 
 from . import cache as list_cache
-from . import selectors, services
+from . import export, selectors, services
 from .filters import LocationFilter
 from .models import Location
 from .serializers import (
+    ExportQuerySerializer,
     LocationDetailSerializer,
     LocationListSerializer,
     LocationMapSerializer,
@@ -82,6 +83,22 @@ class LocationViewSet(viewsets.ModelViewSet):
         }
         list_cache.set("map", request.query_params, data)
         return Response(data)
+
+    @extend_schema(
+        parameters=[ExportQuerySerializer],
+        responses={
+            (200, "text/csv"): OpenApiTypes.BINARY,
+            (200, "application/json"): OpenApiTypes.BINARY,
+        },
+        description="Download locations as CSV or JSON. Accepts the same filters, search "
+        "and ordering as the list; not paginated.",
+    )
+    @action(detail=False, methods=["get"], pagination_class=None)
+    def export(self, request):
+        params = ExportQuerySerializer(data=request.query_params)
+        params.is_valid(raise_exception=True)
+        queryset = self.filter_queryset(self.get_queryset())
+        return export.export_response(queryset, params.validated_data["export_format"])
 
     def retrieve(self, request, *args, **kwargs):
         # Cheap lookup first: the stats query runs once, after the view is registered,

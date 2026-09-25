@@ -167,3 +167,8 @@ class LocationMapSerializer(serializers.BaseSerializer):
                 "popularity": round(obj.popularity, 2),
             },
         }
+
+
+class ExportQuerySerializer(serializers.Serializer):
+    # Not "format": DRF reserves ?format= for renderer selection
+    export_format = serializers.ChoiceField(choices=["csv", "json"])
