@@ -7,6 +7,7 @@ from rest_framework import serializers, status
 from rest_framework.generics import GenericAPIView
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from apps.common.mixins import EnforceCsrfMixin
 from apps.common.permissions import IsAnonymous
@@ -23,8 +24,10 @@ from .serializers import (
 DetailSerializer = inline_serializer("Detail", {"detail": serializers.CharField()})
 
 
+# Plain APIView (no request body): a GenericAPIView without serializer_class makes
+# the Browsable API crash while building its forms
 @method_decorator(ensure_csrf_cookie, name="dispatch")
-class CsrfView(GenericAPIView):
+class CsrfView(APIView):
     permission_classes = [AllowAny]
 
     @extend_schema(responses=inline_serializer("CsrfToken", {"csrfToken": serializers.CharField()}))
@@ -62,7 +65,7 @@ class LoginView(EnforceCsrfMixin, GenericAPIView):
         return Response(UserSerializer(user).data)
 
 
-class LogoutView(GenericAPIView):
+class LogoutView(APIView):
     permission_classes = [IsAuthenticated]
 
     @extend_schema(request=None, responses={204: None})
