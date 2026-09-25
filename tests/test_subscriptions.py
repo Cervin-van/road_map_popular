@@ -69,3 +69,55 @@ def test_author_reviewing_own_location_gets_no_email():
     location = LocationFactory()
     review = ReviewFactory(location=location, author=location.author)
     assert services.recipients_for_review(review) == []
+
+
+# --- API ------------------------------------------------------------------
+
+
+def subscribe_url(location):
+    return f"/api/locations/{location.pk}/subscribe/"
+
+
+def test_subscribe_and_list(auth_client, user):
+    location = LocationFactory()
+
+    response = auth_client.post(subscribe_url(location))
+
+    assert response.status_code == 201
+    assert response.data["location"] == {"id": location.id, "title": location.title}
+    listed = auth_client.get("/api/subscriptions/").data["results"]
+    assert [s["location"]["id"] for s in listed] == [location.id]
+
+
+def test_subscribe_twice_returns_409(auth_client, user):
+    location = LocationSubscriptionFactory(user=user).location
+    response = auth_client.post(subscribe_url(location))
+    assert response.status_code == 409
+    assert response.data["code"] == "already_subscribed"
+
+
+def test_unsubscribe(auth_client, user):
+    location = LocationSubscriptionFactory(user=user).location
+    assert auth_client.delete(subscribe_url(location)).status_code == 204
+    assert auth_client.delete(subscribe_url(location)).status_code == 404
+
+
+def test_anonymous_cannot_subscribe_or_list(api_client):
+    assert api_client.post(subscribe_url(LocationFactory())).status_code == 403
+    assert api_client.get("/api/subscriptions/").status_code == 403
+
+
+def test_subscribe_to_soft_deleted_location_returns_404(auth_client):
+    location = LocationFactory()
+    location.soft_delete()
+    assert auth_client.post(subscribe_url(location)).status_code == 404
+
+
+def test_my_subscriptions_only_mine_and_alive(auth_client, user):
+    mine = LocationSubscriptionFactory(user=user)
+    LocationSubscriptionFactory(user=user).location.soft_delete()
+    LocationSubscriptionFactory()  # someone else's
+
+    listed = auth_client.get("/api/subscriptions/").data["results"]
+
+    assert [s["id"] for s in listed] == [mine.id]
