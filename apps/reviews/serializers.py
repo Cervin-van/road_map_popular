@@ -32,3 +32,10 @@ class ReviewSerializer(serializers.ModelSerializer):
 
     def get_my_vote(self, obj) -> str | None:
         return VOTE_LABELS.get(obj.my_vote)
+
+
+class ReviewWriteSerializer(serializers.ModelSerializer):
+    # rating range 1-5 comes from the model validators
+    class Meta:
+        model = Review
+        fields = ["rating", "text"]

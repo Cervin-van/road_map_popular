@@ -114,3 +114,82 @@ def test_list_reviews_has_no_n_plus_one(auth_client, django_assert_num_queries):
     with django_assert_num_queries(5):
         response = auth_client.get(location_reviews_url(location.pk))
     assert response.data["count"] == 5
+
+
+# --- write API ------------------------------------------------------------
+
+REVIEW_PAYLOAD = {"rating": 5, "text": "Lovely place"}
+
+
+def test_anonymous_cannot_create_review(api_client):
+    location = LocationFactory()
+    response = api_client.post(location_reviews_url(location.pk), REVIEW_PAYLOAD, format="json")
+    assert response.status_code == 403
+
+
+def test_create_review(auth_client, user):
+    location = LocationFactory()
+
+    response = auth_client.post(location_reviews_url(location.pk), REVIEW_PAYLOAD, format="json")
+
+    assert response.status_code == 201
+    assert response.data["author"]["id"] == user.id
+    assert response.data["location"] == location.id
+    assert (response.data["likes_count"], response.data["my_vote"]) == (0, None)
+
+
+def test_second_review_on_same_location_returns_409(auth_client, user):
+    review = ReviewFactory(author=user)
+    response = auth_client.post(
+        location_reviews_url(review.location_id), REVIEW_PAYLOAD, format="json"
+    )
+    assert response.status_code == 409
+    assert response.data["code"] == "review_already_exists"
+
+
+@pytest.mark.parametrize("rating", [0, 6, "abc"])
+def test_rating_out_of_range_returns_400(auth_client, rating):
+    location = LocationFactory()
+    response = auth_client.post(
+        location_reviews_url(location.pk), {"rating": rating, "text": "x"}, format="json"
+    )
+    assert response.status_code == 400
+    assert "rating" in response.data
+
+
+def test_review_on_soft_deleted_location_returns_404(auth_client):
+    location = LocationFactory()
+    location.soft_delete()
+    response = auth_client.post(location_reviews_url(location.pk), REVIEW_PAYLOAD, format="json")
+    assert response.status_code == 404
+
+
+def test_author_can_patch_review(auth_client, user):
+    review = ReviewFactory(author=user, rating=2)
+    response = auth_client.patch(review_url(review.pk), {"rating": 4}, format="json")
+    assert response.status_code == 200
+    assert response.data["rating"] == 4
+
+
+def test_non_author_cannot_patch_or_delete_review(auth_client):
+    review = ReviewFactory()
+    assert auth_client.patch(review_url(review.pk), {"rating": 1}, format="json").status_code == 403
+    assert auth_client.delete(review_url(review.pk)).status_code == 403
+
+
+def test_admin_can_patch_foreign_review(admin_client):
+    review = ReviewFactory()
+    response = admin_client.patch(review_url(review.pk), {"text": "Moderated"}, format="json")
+    assert response.status_code == 200
+
+
+def test_author_can_delete_review(auth_client, user):
+    review = ReviewFactory(author=user)
+    assert auth_client.delete(review_url(review.pk)).status_code == 204
+    assert auth_client.get(review_url(review.pk)).status_code == 404
+
+
+def test_put_not_allowed(auth_client, user):
+    review = ReviewFactory(author=user)
+    response = auth_client.put(review_url(review.pk), REVIEW_PAYLOAD, format="json")
+    assert response.status_code == 405

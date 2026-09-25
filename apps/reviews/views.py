@@ -1,19 +1,33 @@
 from functools import cached_property
 
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, viewsets
+from drf_spectacular.utils import extend_schema, extend_schema_view
+from rest_framework import mixins, status, viewsets
+from rest_framework.permissions import IsAuthenticatedOrReadOnly
+from rest_framework.response import Response
 
+from apps.common.permissions import IsOwnerOrAdmin
 from apps.locations.models import Location
 
-from . import selectors
+from . import selectors, services
 from .models import Review
-from .serializers import ReviewSerializer
+from .serializers import ReviewSerializer, ReviewWriteSerializer
+
+_write_schema = extend_schema(request=ReviewWriteSerializer, responses=ReviewSerializer)
 
 
-class LocationReviewViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
+class ReviewReadMixin:
+    def _read(self, pk):
+        # Re-read through the selector so the response carries counters and my_vote
+        review = selectors.reviews_with_votes(self.request.user).get(pk=pk)
+        return ReviewSerializer(review, context=self.get_serializer_context()).data
+
+
+@extend_schema_view(create=_write_schema)
+class LocationReviewViewSet(ReviewReadMixin, mixins.ListModelMixin, viewsets.GenericViewSet):
     """/locations/{location_pk}/reviews/"""
 
-    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
     ordering_fields = ["created_at", "rating", "likes_count"]
     ordering = ["-created_at"]
 
@@ -27,11 +41,43 @@ class LocationReviewViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
             return Review.objects.none()
         return selectors.reviews_with_votes(self.request.user).filter(location=self.location)
 
+    def get_serializer_class(self):
+        return ReviewWriteSerializer if self.action == "create" else ReviewSerializer
 
-class ReviewViewSet(mixins.RetrieveModelMixin, viewsets.GenericViewSet):
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        review = services.create_review(
+            location=self.location, author=request.user, **serializer.validated_data
+        )
+        return Response(self._read(review.pk), status=status.HTTP_201_CREATED)
+
+
+@extend_schema_view(partial_update=_write_schema)
+class ReviewViewSet(
+    ReviewReadMixin,
+    mixins.RetrieveModelMixin,
+    mixins.UpdateModelMixin,
+    mixins.DestroyModelMixin,
+    viewsets.GenericViewSet,
+):
     """/reviews/{id}/"""
 
-    serializer_class = ReviewSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly, IsOwnerOrAdmin]
+    http_method_names = ["get", "patch", "delete", "head", "options"]  # no PUT
 
     def get_queryset(self):
         return selectors.reviews_with_votes(self.request.user)
+
+    def get_serializer_class(self):
+        return ReviewWriteSerializer if self.action == "partial_update" else ReviewSerializer
+
+    def update(self, request, *args, **kwargs):
+        review = self.get_object()  # runs IsOwnerOrAdmin
+        serializer = self.get_serializer(review, data=request.data, partial=True)
+        serializer.is_valid(raise_exception=True)
+        services.update_review(review, **serializer.validated_data)
+        return Response(self._read(review.pk))
+
+    def perform_destroy(self, instance):
+        services.delete_review(instance)

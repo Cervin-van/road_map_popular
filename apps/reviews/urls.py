@@ -10,7 +10,7 @@ router.register("reviews", ReviewViewSet, basename="review")
 urlpatterns = [
     path(
         "locations/<int:location_pk>/reviews/",
-        LocationReviewViewSet.as_view({"get": "list"}),
+        LocationReviewViewSet.as_view({"get": "list", "post": "create"}),
         name="location-reviews",
     ),
     *router.urls,
