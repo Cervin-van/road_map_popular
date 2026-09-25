@@ -1,3 +1,5 @@
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+
 from django.contrib.auth import get_user_model
 from django.utils.text import Truncator
 from rest_framework import serializers
@@ -63,3 +65,37 @@ class LocationDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+
+class CoordinateField(serializers.DecimalField):
+    """Decimal(9, 6) that rounds extra decimals instead of rejecting them.
+
+    Map widgets send e.g. 50.450123456; DRF validates precision *before*
+    quantizing even with `rounding` set, so round first, then validate.
+    """
+
+    def __init__(self, limit: int, **kwargs):
+        super().__init__(
+            max_digits=9,
+            decimal_places=6,
+            rounding=ROUND_HALF_UP,
+            min_value=Decimal(-limit),
+            max_value=Decimal(limit),
+            **kwargs,
+        )
+
+    def validate_precision(self, value):
+        try:
+            value = self.quantize(value)
+        except InvalidOperation:  # too many whole digits to fit the context precision
+            self.fail("max_whole_digits", max_whole_digits=self.max_whole_digits)
+        return super().validate_precision(value)
+
+
+class LocationWriteSerializer(serializers.ModelSerializer):
+    latitude = CoordinateField(limit=90)
+    longitude = CoordinateField(limit=180)
+
+    class Meta:
+        model = Location
+        fields = ["title", "description", "category", "address", "latitude", "longitude"]

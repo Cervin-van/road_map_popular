@@ -5,7 +5,7 @@ from django.db import IntegrityError
 from django.db.models import ProtectedError
 
 from apps.locations.models import Location
-from tests.factories import LocationFactory
+from tests.factories import CategoryFactory, LocationFactory, UserFactory
 
 pytestmark = pytest.mark.django_db
 
@@ -111,3 +111,122 @@ def test_soft_deleted_location_hidden_from_api(api_client):
 
     assert ids == [alive.id]
     assert api_client.get(detail_url(deleted.pk)).status_code == 404
+
+
+# --- write API ------------------------------------------------------------
+
+
+@pytest.fixture
+def payload():
+    category = CategoryFactory()
+    return {
+        "title": "Mariinsky Park",
+        "description": "Old park near the parliament",
+        "category": category.id,
+        "address": "Hrushevskoho st.",
+        "latitude": "50.446900",
+        "longitude": "30.537600",
+    }
+
+
+def test_anonymous_cannot_create(api_client, payload):
+    assert api_client.post(LIST_URL, payload, format="json").status_code == 403
+
+
+def test_user_creates_location_as_author(auth_client, user, payload):
+    other = UserFactory()
+    response = auth_client.post(LIST_URL, {**payload, "author": other.id}, format="json")
+
+    assert response.status_code == 201
+    assert response.data["author"]["id"] == user.id  # payload author is ignored
+    assert response.data["category"]["id"] == payload["category"]
+    assert Location.objects.get(pk=response.data["id"]).author == user
+
+
+def test_create_rounds_extra_coordinate_decimals(auth_client, payload):
+    response = auth_client.post(
+        LIST_URL, {**payload, "latitude": "50.4469005", "longitude": 30.53760049}, format="json"
+    )
+    assert response.status_code == 201
+    assert response.data["latitude"] == "50.446901"
+    assert response.data["longitude"] == "30.537600"
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("latitude", "90.5"), ("longitude", "-181"), ("latitude", "1e10"), ("longitude", "abc")],
+)
+def test_create_rejects_out_of_range_coordinates(auth_client, payload, field, value):
+    response = auth_client.post(LIST_URL, {**payload, field: value}, format="json")
+    assert response.status_code == 400
+    assert field in response.data
+
+
+def test_create_rejects_unknown_category(auth_client, payload):
+    response = auth_client.post(LIST_URL, {**payload, "category": 999_999}, format="json")
+    assert response.status_code == 400
+    assert "category" in response.data
+
+
+def test_create_requires_fields(auth_client):
+    response = auth_client.post(LIST_URL, {}, format="json")
+    assert response.status_code == 400
+    assert {"title", "description", "category", "address", "latitude", "longitude"} <= set(
+        response.data
+    )
+
+
+def test_owner_can_patch(auth_client, user):
+    location = LocationFactory(author=user)
+    response = auth_client.patch(detail_url(location.pk), {"title": "Renamed"}, format="json")
+    assert response.status_code == 200
+    assert response.data["title"] == "Renamed"
+    assert response.data["author"]["id"] == user.id
+
+
+def test_owner_can_put(auth_client, user, payload):
+    location = LocationFactory(author=user)
+    response = auth_client.put(detail_url(location.pk), payload, format="json")
+    assert response.status_code == 200
+    assert response.data["title"] == payload["title"]
+
+
+def test_non_owner_cannot_patch_or_delete(auth_client):
+    location = LocationFactory()
+    assert (
+        auth_client.patch(detail_url(location.pk), {"title": "X"}, format="json").status_code == 403
+    )
+    assert auth_client.delete(detail_url(location.pk)).status_code == 403
+    location.refresh_from_db()
+    assert location.is_deleted is False
+
+
+def test_admin_can_patch_foreign_location(admin_client):
+    location = LocationFactory()
+    response = admin_client.patch(detail_url(location.pk), {"title": "By admin"}, format="json")
+    assert response.status_code == 200
+
+
+def test_owner_delete_is_soft(auth_client, user):
+    location = LocationFactory(author=user)
+
+    assert auth_client.delete(detail_url(location.pk)).status_code == 204
+
+    assert Location.all_objects.get(pk=location.pk).is_deleted is True
+    assert auth_client.get(detail_url(location.pk)).status_code == 404
+    assert auth_client.get(LIST_URL).data["count"] == 0
+    assert auth_client.delete(detail_url(location.pk)).status_code == 404
+
+
+def test_patch_soft_deleted_location_returns_404(auth_client, user):
+    location = LocationFactory(author=user)
+    location.soft_delete()
+    response = auth_client.patch(detail_url(location.pk), {"title": "X"}, format="json")
+    assert response.status_code == 404
+
+
+def test_delete_category_in_use_returns_409(admin_client):
+    location = LocationFactory()
+    response = admin_client.delete(f"/api/categories/{location.category_id}/")
+    assert response.status_code == 409
+    assert response.data["code"] == "protected"
